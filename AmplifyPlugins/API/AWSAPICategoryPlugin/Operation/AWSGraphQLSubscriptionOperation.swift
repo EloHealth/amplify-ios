@@ -110,8 +110,7 @@ final public class AWSGraphQLSubscriptionOperation<R: Decodable>: GraphQLSubscri
         case .data(let data):
             onGraphQLResponseData(data)
         case .failed(let error):
-            dispatch(result: .failure(APIError.operationError("subscription item event failed with error", "", error)))
-            finish()
+            onSubscriptionFailure(error)
         }
     }
 
@@ -159,6 +158,29 @@ final public class AWSGraphQLSubscriptionOperation<R: Decodable>: GraphQLSubscri
             dispatch(result: .failure(APIError.operationError("Failed to deserialize", "", error)))
             finish()
         }
+    }
+
+    private func onSubscriptionFailure(_ error: Error) {
+        let errorDescription = "Subscription item event failed with error"
+        guard case let ConnectionProviderError.subscription(_, payload) = error,
+              let errors = payload?["errors"] as? AppSyncJSONValue else {
+            dispatch(result: .failure(APIError.operationError(errorDescription, "", error)))
+            finish()
+            return
+        }
+
+        if let graphQLErrors = try? GraphQLResponseDecoder.decodeAppSyncErrors(errors),
+           let extensions = graphQLErrors.first?.extensions,
+           let recoveryMessage = graphQLErrors.first?.message,
+           case let .string(errorTypeValue) = extensions["errorType"] {
+                let appSyncError = AppSyncErrorType(errorTypeValue)
+                dispatch(result: .failure(APIError.operationError(errorDescription, recoveryMessage, appSyncError)))
+                finish()
+                return
+        }
+
+        dispatch(result: .failure(APIError.operationError(errorDescription, "", error)))
+        finish()
     }
 
 }

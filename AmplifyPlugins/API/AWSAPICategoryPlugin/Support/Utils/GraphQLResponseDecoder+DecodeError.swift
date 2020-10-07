@@ -7,6 +7,7 @@
 
 import Foundation
 import Amplify
+import AppSyncRealTimeClient
 
 extension GraphQLResponseDecoder {
 
@@ -27,6 +28,20 @@ extension GraphQLResponseDecoder {
         }
 
         return responseErrors
+    }
+
+    static func decodeAppSyncErrors(_ appSyncJSON: AppSyncJSONValue?) throws -> [GraphQLError] {
+        guard let errorResponse = appSyncJSON else {
+            throw APIError.unknown("""
+                Unexpected failure while decoding GraphQL response containing errors:
+                \(String(describing: appSyncJSON))
+                """, "", nil)
+        }
+        guard case let .array(errors) = errorResponse else {
+            throw APIError.unknown("Expected 'errors' field not found in \(String(describing: appSyncJSON))", "", nil)
+        }
+        let convertedValues = errors.map(AppSyncJSONValue.toJSONValue)
+        return try GraphQLResponseDecoder.decodeErrors(graphQLErrors: convertedValues)
     }
 
     static func decode(graphQLErrorJSON: JSONValue) throws -> GraphQLError {
